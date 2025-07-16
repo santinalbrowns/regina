@@ -161,6 +161,18 @@ class DatabaseManager:
                 )
             ''')
             
+            # Users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT DEFAULT 'user',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+            
             # Create indexes
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_agent_id ON events(agent_id)')
@@ -287,6 +299,43 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"Error retrieving agents: {e}")
                 return []
+
+    def get_users(self):
+        with self.lock:
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT id, username, role, created_at FROM users ORDER BY username')
+                    columns = [desc[0] for desc in cursor.description]
+                    users = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                    return users
+            except Exception as e:
+                logger.error(f"Error retrieving users: {e}")
+                return []
+    def add_user(self, username, password_hash, role='user'):
+        with self.lock:
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    user_id = str(uuid.uuid4())
+                    cursor.execute('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)',
+                                   (user_id, username, password_hash, role))
+                    conn.commit()
+                    return True
+            except Exception as e:
+                logger.error(f"Error adding user: {e}")
+                return False
+    def delete_user(self, user_id):
+        with self.lock:
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+                    conn.commit()
+                    return cursor.rowcount > 0
+            except Exception as e:
+                logger.error(f"Error deleting user: {e}")
+                return False
 
 class RuleEngine:
     def __init__(self, db_manager: DatabaseManager):
@@ -813,7 +862,6 @@ def submit_event_api():
 
 @app.route('/dashboard')
 def dashboard_page():
-    # Simple HTML page with TailwindCSS and a root div for JS
     html = '''
     <!DOCTYPE html>
     <html lang="en">
@@ -824,84 +872,181 @@ def dashboard_page():
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-gray-100 min-h-screen">
+        <nav class="bg-white shadow mb-8">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+                <div class="text-2xl font-bold text-blue-700">SysMon</div>
+                <div>
+                    <button id="nav-dashboard" class="mr-4 text-lg font-semibold text-gray-700 hover:text-blue-600">Dashboard</button>
+                    <button id="nav-users" class="text-lg font-semibold text-gray-700 hover:text-blue-600">Users</button>
+                </div>
+            </div>
+        </nav>
         <div id="dashboard-root" class="container mx-auto py-8">
-            <h1 class="text-3xl font-bold mb-6">Monitoring Dashboard</h1>
             <div id="dashboard-content"></div>
         </div>
         <script>
-        // Fetch and render dashboard data
-        fetch('/api/dashboard').then(r => r.json()).then(data => {
-            const root = document.getElementById('dashboard-content');
-            root.innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div class="bg-white p-6 rounded shadow">
-                        <div class="text-gray-500">Agents</div>
-                        <div class="text-2xl font-bold">${data.agents.total}</div>
-                        <div class="text-green-600">Active: ${data.agents.active}</div>
-                        <div class="text-red-600">Inactive: ${data.agents.inactive}</div>
+        function renderDashboard() {
+            fetch('/api/dashboard').then(r => r.json()).then(data => {
+                const root = document.getElementById('dashboard-content');
+                root.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded shadow">
+                            <div class="text-gray-500">Agents</div>
+                            <div class="text-2xl font-bold">${data.agents.total}</div>
+                            <div class="text-green-600">Active: ${data.agents.active}</div>
+                            <div class="text-red-600">Inactive: ${data.agents.inactive}</div>
+                        </div>
+                        <div class="bg-white p-6 rounded shadow">
+                            <div class="text-gray-500">Events (recent)</div>
+                            <div class="text-2xl font-bold">${data.events.total}</div>
+                        </div>
+                        <div class="bg-white p-6 rounded shadow">
+                            <div class="text-gray-500">Alerts</div>
+                            <div class="text-2xl font-bold">${data.alerts.total}</div>
+                            <div class="text-yellow-600">Unacknowledged: ${data.alerts.unacknowledged}</div>
+                        </div>
                     </div>
-                    <div class="bg-white p-6 rounded shadow">
-                        <div class="text-gray-500">Events (recent)</div>
-                        <div class="text-2xl font-bold">${data.events.total}</div>
+                    <h2 class="text-xl font-semibold mb-2">Recent Events</h2>
+                    <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded shadow">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-2">Time</th>
+                                <th class="px-4 py-2">Agent</th>
+                                <th class="px-4 py-2">Type</th>
+                                <th class="px-4 py-2">Severity</th>
+                                <th class="px-4 py-2">Title</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.events.recent.map(ev => `
+                            <tr>
+                                <td class="border px-4 py-2 text-xs">${ev.timestamp}</td>
+                                <td class="border px-4 py-2 text-xs">${ev.agent_id}</td>
+                                <td class="border px-4 py-2 text-xs">${ev.event_type}</td>
+                                <td class="border px-4 py-2 text-xs">${ev.severity}</td>
+                                <td class="border px-4 py-2 text-xs">${ev.title}</td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                     </div>
-                    <div class="bg-white p-6 rounded shadow">
-                        <div class="text-gray-500">Alerts</div>
-                        <div class="text-2xl font-bold">${data.alerts.total}</div>
-                        <div class="text-yellow-600">Unacknowledged: ${data.alerts.unacknowledged}</div>
+                    <h2 class="text-xl font-semibold mt-8 mb-2">Agents</h2>
+                    <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded shadow">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-2">Agent ID</th>
+                                <th class="px-4 py-2">Hostname</th>
+                                <th class="px-4 py-2">IP</th>
+                                <th class="px-4 py-2">Status</th>
+                                <th class="px-4 py-2">Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.agents.list.map(agent => `
+                            <tr>
+                                <td class="border px-4 py-2 text-xs">${agent.id}</td>
+                                <td class="border px-4 py-2 text-xs">${agent.hostname}</td>
+                                <td class="border px-4 py-2 text-xs">${agent.ip_address}</td>
+                                <td class="border px-4 py-2 text-xs">${agent.status}</td>
+                                <td class="border px-4 py-2 text-xs">${agent.last_seen}</td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                     </div>
-                </div>
-                <h2 class="text-xl font-semibold mb-2">Recent Events</h2>
-                <div class="overflow-x-auto">
-                <table class="min-w-full bg-white rounded shadow">
-                    <thead>
-                        <tr>
-                            <th class="px-4 py-2">Time</th>
-                            <th class="px-4 py-2">Agent</th>
-                            <th class="px-4 py-2">Type</th>
-                            <th class="px-4 py-2">Severity</th>
-                            <th class="px-4 py-2">Title</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${data.events.recent.map(ev => `
-                        <tr>
-                            <td class="border px-4 py-2 text-xs">${ev.timestamp}</td>
-                            <td class="border px-4 py-2 text-xs">${ev.agent_id}</td>
-                            <td class="border px-4 py-2 text-xs">${ev.event_type}</td>
-                            <td class="border px-4 py-2 text-xs">${ev.severity}</td>
-                            <td class="border px-4 py-2 text-xs">${ev.title}</td>
-                        </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-                </div>
-                <h2 class="text-xl font-semibold mt-8 mb-2">Agents</h2>
-                <div class="overflow-x-auto">
-                <table class="min-w-full bg-white rounded shadow">
-                    <thead>
-                        <tr>
-                            <th class="px-4 py-2">Agent ID</th>
-                            <th class="px-4 py-2">Hostname</th>
-                            <th class="px-4 py-2">IP</th>
-                            <th class="px-4 py-2">Status</th>
-                            <th class="px-4 py-2">Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${data.agents.list.map(agent => `
-                        <tr>
-                            <td class="border px-4 py-2 text-xs">${agent.id}</td>
-                            <td class="border px-4 py-2 text-xs">${agent.hostname}</td>
-                            <td class="border px-4 py-2 text-xs">${agent.ip_address}</td>
-                            <td class="border px-4 py-2 text-xs">${agent.status}</td>
-                            <td class="border px-4 py-2 text-xs">${agent.last_seen}</td>
-                        </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-                </div>
-            `;
-        });
+                `;
+            });
+        }
+        function renderUsers() {
+            fetch('/api/users').then(r => r.json()).then(users => {
+                const root = document.getElementById('dashboard-content');
+                root.innerHTML = `
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-semibold">User Management</h2>
+                        <button id="show-add-user" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">Add User</button>
+                    </div>
+                    <div id="add-user-form" class="hidden mb-6 bg-white p-6 rounded shadow">
+                        <h3 class="text-lg font-bold mb-2">Add New User</h3>
+                        <form id="user-form" class="flex flex-col md:flex-row gap-4 items-center">
+                            <input type="text" id="username" placeholder="Username" class="border px-3 py-2 rounded w-48" required />
+                            <input type="password" id="password" placeholder="Password" class="border px-3 py-2 rounded w-48" required />
+                            <select id="role" class="border px-3 py-2 rounded w-32">
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Add</button>
+                            <button type="button" id="cancel-add-user" class="ml-2 text-gray-500 hover:text-red-600">Cancel</button>
+                        </form>
+                        <div id="add-user-error" class="text-red-600 mt-2"></div>
+                    </div>
+                    <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white rounded shadow">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-2">Username</th>
+                                <th class="px-4 py-2">Role</th>
+                                <th class="px-4 py-2">Created</th>
+                                <th class="px-4 py-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${users.map(user => `
+                            <tr>
+                                <td class="border px-4 py-2 text-xs">${user.username}</td>
+                                <td class="border px-4 py-2 text-xs">${user.role}</td>
+                                <td class="border px-4 py-2 text-xs">${user.created_at}</td>
+                                <td class="border px-4 py-2 text-xs">
+                                    <button class="delete-user bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700" data-id="${user.id}">Delete</button>
+                                </td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    </div>
+                `;
+                // Add user form logic
+                document.getElementById('show-add-user').onclick = () => {
+                    document.getElementById('add-user-form').classList.remove('hidden');
+                };
+                document.getElementById('cancel-add-user').onclick = () => {
+                    document.getElementById('add-user-form').classList.add('hidden');
+                };
+                document.getElementById('user-form').onsubmit = (e) => {
+                    e.preventDefault();
+                    const username = document.getElementById('username').value;
+                    const password = document.getElementById('password').value;
+                    const role = document.getElementById('role').value;
+                    fetch('/api/users', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password, role })
+                    }).then(r => r.json()).then(resp => {
+                        if (resp.status) {
+                            renderUsers();
+                        } else {
+                            document.getElementById('add-user-error').innerText = resp.error || 'Failed to add user';
+                        }
+                    });
+                };
+                // Delete user logic
+                document.querySelectorAll('.delete-user').forEach(btn => {
+                    btn.onclick = () => {
+                        if (confirm('Delete this user?')) {
+                            fetch(`/api/users/${btn.dataset.id}`, { method: 'DELETE' })
+                                .then(r => r.json()).then(resp => {
+                                    renderUsers();
+                                });
+                        }
+                    };
+                });
+            });
+        }
+        document.getElementById('nav-dashboard').onclick = renderDashboard;
+        document.getElementById('nav-users').onclick = renderUsers;
+        // Default view
+        renderDashboard();
         </script>
     </body>
     </html>
@@ -911,6 +1056,34 @@ def dashboard_page():
 @app.route('/api/dashboard')
 def api_dashboard():
     return jsonify(server_instance.get_dashboard_data())
+
+@app.route('/api/users', methods=['GET'])
+def api_list_users():
+    return jsonify(server_instance.db_manager.get_users())
+
+@app.route('/api/users', methods=['POST'])
+def api_add_user():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'user')
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+    import hashlib
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    ok = server_instance.db_manager.add_user(username, password_hash, role)
+    if ok:
+        return jsonify({'status': 'user added'}), 200
+    else:
+        return jsonify({'error': 'Failed to add user'}), 500
+
+@app.route('/api/users/<user_id>', methods=['DELETE'])
+def api_delete_user(user_id):
+    ok = server_instance.db_manager.delete_user(user_id)
+    if ok:
+        return jsonify({'status': 'user deleted'})
+    else:
+        return jsonify({'error': 'Failed to delete user'}), 500
 
 # Example usage and testing
 if __name__ == "__main__":
