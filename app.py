@@ -1328,7 +1328,6 @@ def dashboard_page():
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
                         y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.1)' } },
@@ -1359,7 +1358,6 @@ def dashboard_page():
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
                     plugins: {
                         legend: {
                             position: 'bottom',
