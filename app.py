@@ -952,7 +952,7 @@ def submit_event_api():
 @app.route('/dashboard')
 def dashboard_page():
     if not is_logged_in():
-        # Show login form
+        # Show login form (unchanged)
         html = '''
         <!DOCTYPE html>
         <html lang="en">
@@ -1000,313 +1000,567 @@ def dashboard_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Monitoring Dashboard</title>
+        <title>SysMon - Monitoring Dashboard</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+            * { font-family: 'Inter', sans-serif; }
+            .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+            .glass-effect { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
+            .card-hover { transition: all 0.3s ease; transform: translateY(0); }
+            .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); }
+            .nav-item { transition: all 0.3s ease; position: relative; overflow: hidden; }
+            .nav-item::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 3px; background: linear-gradient(135deg, #667eea, #764ba2); transform: scaleY(0); transition: transform 0.3s ease; }
+            .nav-item.active::before, .nav-item:hover::before { transform: scaleY(1); }
+            .nav-item.active { background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); color: #667eea; }
+            .pulse-dot { animation: pulse 2s infinite; }
+            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+            .slide-in { animation: slideIn 0.5s ease-out; }
+            @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+            .metric-card { background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1px solid rgba(226, 232, 240, 0.8); }
+            .status-online { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+            .status-offline { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+            .status-warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+            .search-input { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 2px solid transparent; transition: all 0.3s ease; }
+            .search-input:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+            .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); transition: all 0.3s ease; }
+            .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3); }
+            .table-row { transition: all 0.2s ease; }
+            .table-row:hover { background: rgba(102, 126, 234, 0.05); transform: scale(1.001); }
+            .loading-spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            .severity-critical { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+            .severity-high { background: linear-gradient(135deg, #f97316, #ea580c); color: white; }
+            .severity-medium { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+            .severity-low { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+        </style>
     </head>
-    <body class="bg-gray-100 min-h-screen">
-        <div>
-            <nav class="fixed top-0 left-0 bg-white shadow w-64 h-screen flex-shrink-0 z-10">
-                <div class="px-6 py-8 flex flex-col h-full">
-                    <div class="text-2xl font-bold text-blue-700 mb-10">SysMon</div>
-                    <div class="flex flex-col gap-2">
-                        <button id="nav-dashboard" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Dashboard</button>
-                        <button id="nav-alerts" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Alerts</button>
-                        <button id="nav-events" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Events</button>
-                        <button id="nav-users" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Users</button>
+    <body class="bg-gray-50 min-h-screen">
+        <!-- Sidebar -->
+        <nav class="fixed top-0 left-0 bg-white shadow-xl w-72 h-screen flex-shrink-0 z-20 border-r border-gray-200">
+            <div class="px-6 py-8 flex flex-col h-full">
+                <!-- Logo -->
+                <div class="flex items-center mb-12">
+                    <div class="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center mr-3">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2z"></path>
+                        </svg>
                     </div>
-                    <div class="mt-auto">
-                        <button id="nav-logout" class="w-full text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Logout</button>
+                    <div>
+                        <div class="text-2xl font-bold text-gray-800">SysMon</div>
+                        <div class="text-sm text-gray-500">Monitoring Dashboard</div>
                     </div>
                 </div>
-            </nav>
-            <main class="ml-0 md:ml-64 p-8">
-                <div id="dashboard-root">
-                    <div id="dashboard-content"></div>
+                <!-- Navigation -->
+                <div class="flex flex-col gap-2 mb-8">
+                    <button id="nav-dashboard" class="nav-item active text-left px-4 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-100 flex items-center">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
+                        </svg>
+                        Dashboard
+                    </button>
+                    <button id="nav-alerts" class="nav-item text-left px-4 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-100 flex items-center">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                        Alerts
+                        <span id="alert-badge" class="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">0</span>
+                    </button>
+                    <button id="nav-events" class="nav-item text-left px-4 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-100 flex items-center">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        Events
+                    </button>
+                    <button id="nav-users" class="nav-item text-left px-4 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-100 flex items-center">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                        </svg>
+                        Users
+                    </button>
                 </div>
-            </main>
-        </div>
+                <!-- Status Indicator -->
+                <div class="mb-8 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700">System Status</span>
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-green-500 rounded-full pulse-dot mr-2"></div>
+                            <span class="text-sm text-green-600">Online</span>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-500">Last updated: just now</div>
+                </div>
+                <!-- Logout -->
+                <div class="mt-auto">
+                    <button id="nav-logout" class="w-full text-left px-4 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-red-50 hover:text-red-600 flex items-center transition-colors">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </nav>
+        <!-- Main Content -->
+        <main class="ml-72 p-8 min-h-screen">
+            <div id="dashboard-root" class="slide-in">
+                <div id="dashboard-content"></div>
+            </div>
+        </main>
         <script>
+        // --- JS for dynamic dashboard ---
+        // Helper functions for badges
+        function getSeverityBadge(severity) {
+            const severityMap = {
+                4: 'severity-critical',
+                3: 'severity-high',
+                2: 'severity-medium',
+                1: 'severity-low',
+                'Critical': 'severity-critical',
+                'High': 'severity-high',
+                'Medium': 'severity-medium',
+                'Low': 'severity-low'
+            };
+            let sev = severity;
+            if (typeof sev === 'number') {
+                sev = {1:'Low',2:'Medium',3:'High',4:'Critical'}[sev] || sev;
+            }
+            return `<span class="px-2 py-1 rounded-full text-xs font-medium ${severityMap[severity] || severityMap[sev] || 'bg-gray-100 text-gray-800'}">${sev}</span>`;
+        }
+        function getStatusBadge(status) {
+            const statusMap = {
+                'active': 'status-online',
+                'inactive': 'status-offline',
+                'warning': 'status-warning',
+                'Active': 'status-online',
+                'Inactive': 'status-offline',
+                'Warning': 'status-warning'
+            };
+            return `<span class="px-2 py-1 rounded-full text-xs font-medium ${statusMap[status] || 'bg-gray-100 text-gray-800'}">${status}</span>`;
+        }
+        // --- Dashboard ---
         function renderDashboard() {
+            setActiveNav('nav-dashboard');
             fetch('/api/dashboard').then(r => r.json()).then(data => {
+                document.getElementById('alert-badge').textContent = data.alerts.unacknowledged;
                 const root = document.getElementById('dashboard-content');
                 root.innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div class="bg-white p-6 rounded shadow">
-                            <div class="text-gray-500">Agents</div>
-                            <div class="text-2xl font-bold">${data.agents.total}</div>
-                            <div class="text-green-600">Active: ${data.agents.active}</div>
-                            <div class="text-red-600">Inactive: ${data.agents.inactive}</div>
+                    <div class="slide-in">
+                        <div class="mb-8">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-2">System Overview</h1>
+                            <p class="text-gray-600">Monitor your infrastructure in real-time</p>
                         </div>
-                        <div class="bg-white p-6 rounded shadow">
-                            <div class="text-gray-500">Events (recent)</div>
-                            <div class="text-2xl font-bold">${data.events.total}</div>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                            <div class="metric-card card-hover p-6 rounded-2xl shadow-sm">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="text-gray-500 text-sm font-medium">Total Agents</div>
+                                    <div class="w-12 h-12 gradient-bg rounded-xl flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                                    </div>
+                                </div>
+                                <div class="text-3xl font-bold text-gray-900 mb-2">${data.agents.total}</div>
+                                <div class="flex items-center text-sm">
+                                    <span class="text-green-600 font-medium">${data.agents.active} Active</span>
+                                    <span class="text-gray-400 mx-2">•</span>
+                                    <span class="text-red-600 font-medium">${data.agents.inactive} Inactive</span>
+                                </div>
+                            </div>
+                            <div class="metric-card card-hover p-6 rounded-2xl shadow-sm">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="text-gray-500 text-sm font-medium">Recent Events</div>
+                                    <div class="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                                    </div>
+                                </div>
+                                <div class="text-3xl font-bold text-gray-900 mb-2">${data.events.total}</div>
+                                <div class="text-sm text-gray-600">Last 24 hours</div>
+                            </div>
+                            <div class="metric-card card-hover p-6 rounded-2xl shadow-sm">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="text-gray-500 text-sm font-medium">Active Alerts</div>
+                                    <div class="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path></svg>
+                                    </div>
+                                </div>
+                                <div class="text-3xl font-bold text-gray-900 mb-2">${data.alerts.total}</div>
+                                <div class="text-sm text-orange-600 font-medium">${data.alerts.unacknowledged} Unacknowledged</div>
+                            </div>
+                            <div class="metric-card card-hover p-6 rounded-2xl shadow-sm">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="text-gray-500 text-sm font-medium">System Health</div>
+                                    <div class="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                                    </div>
+                                </div>
+                                <div class="text-3xl font-bold text-green-600 mb-2">96%</div>
+                                <div class="text-sm text-gray-600">Uptime</div>
+                            </div>
                         </div>
-                        <div class="bg-white p-6 rounded shadow">
-                            <div class="text-gray-500">Alerts</div>
-                            <div class="text-2xl font-bold">${data.alerts.total}</div>
-                            <div class="text-yellow-600">Unacknowledged: ${data.alerts.unacknowledged}</div>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                            <div class="col-span-2 bg-white card-hover p-6 rounded-2xl shadow-sm">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-4">Event Types Distribution</h3>
+                                <canvas id="eventTypeChart" height="200"></canvas>
+                            </div>
+                            <div class="bg-white card-hover p-6 rounded-2xl shadow-sm">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-4">Severity Distribution</h3>
+                                <canvas id="severityDonut" height="200"></canvas>
+                            </div>
                         </div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div class="col-span-2 bg-white p-6 rounded shadow">
-                            <h2 class="text-lg font-semibold mb-2">Event Types</h2>
-                            <canvas id="eventTypeChart" height="180"></canvas>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                            <div class="bg-white card-hover p-6 rounded-2xl shadow-sm">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-lg font-semibold text-gray-900">Recent Events</h3>
+                                    <button class="text-sm text-blue-600 hover:text-blue-800 font-medium" onclick="renderAllEvents()">View All</button>
+                                </div>
+                                <div class="space-y-3">
+                                    ${data.events.recent.map(event => `
+                                        <div class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                                            <div class="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
+                                            <div class="flex-1">
+                                                <div class="font-medium text-gray-900 text-sm">${event.title}</div>
+                                                <div class="text-xs text-gray-500">${event.agent_id} • ${event.timestamp}</div>
+                                            </div>
+                                            ${getSeverityBadge(event.severity)}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            <div class="bg-white card-hover p-6 rounded-2xl shadow-sm">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-lg font-semibold text-gray-900">Recent Alerts</h3>
+                                    <button class="text-sm text-blue-600 hover:text-blue-800 font-medium" onclick="renderAllAlerts()">View All</button>
+                                </div>
+                                <div class="space-y-3">
+                                    ${data.alerts.recent.map(alert => `
+                                        <div class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                                            <div class="w-2 h-2 ${alert.acknowledged ? 'bg-green-500' : 'bg-red-500'} rounded-full mr-3"></div>
+                                            <div class="flex-1">
+                                                <div class="font-medium text-gray-900 text-sm">${alert.message}</div>
+                                                <div class="text-xs text-gray-500">${alert.created_at}</div>
+                                            </div>
+                                            ${getSeverityBadge(alert.severity)}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
                         </div>
-                        <div class="bg-white p-6 rounded shadow">
-                            <h2 class="text-lg font-semibold mb-2">Severity Distribution</h2>
-                            <canvas id="severityDonut" width="120" height="120"></canvas>
+                        <div class="bg-white card-hover p-6 rounded-2xl shadow-sm">
+                            <div class="flex items-center justify-between mb-6">
+                                <h3 class="text-lg font-semibold text-gray-900">Agent Status</h3>
+                                <div class="flex items-center space-x-4">
+                                    <div class="flex items-center">
+                                        <div class="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                                        <span class="text-sm text-gray-600">Active</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                                        <span class="text-sm text-gray-600">Inactive</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agent</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hostname</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP Address</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        ${data.agents.list.map(agent => `
+                                            <tr class="table-row">
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${agent.id}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${agent.hostname}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${agent.ip_address}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${getStatusBadge(agent.status)}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${agent.last_seen}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
-                    <h2 class="text-xl font-semibold mb-2">Recent Events</h2>
-                    <div class="overflow-x-auto mb-8">
-                    <table class="min-w-full bg-white rounded shadow">
-                        <thead>
-                            <tr>
-                                <th class="px-4 py-2">Time</th>
-                                <th class="px-4 py-2">Agent</th>
-                                <th class="px-4 py-2">Type</th>
-                                <th class="px-4 py-2">Severity</th>
-                                <th class="px-4 py-2">Title</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.events.recent.map(ev => `
-                            <tr>
-                                <td class="border px-4 py-2 text-xs">${ev.timestamp}</td>
-                                <td class="border px-4 py-2 text-xs">${ev.agent_id}</td>
-                                <td class="border px-4 py-2 text-xs">${ev.event_type}</td>
-                                <td class="border px-4 py-2 text-xs">${ev.severity}</td>
-                                <td class="border px-4 py-2 text-xs">${ev.title}</td>
-                            </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    </div>
-                    <h2 class="text-xl font-semibold mb-2">Recent Alerts</h2>
-                    <div class="overflow-x-auto mb-8">
-                    <table class="min-w-full bg-white rounded shadow">
-                        <thead>
-                            <tr>
-                                <th class="px-4 py-2">Time</th>
-                                <th class="px-4 py-2">Severity</th>
-                                <th class="px-4 py-2">Message</th>
-                                <th class="px-4 py-2">Acknowledged</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.alerts.recent.map(alert => `
-                            <tr>
-                                <td class="border px-4 py-2 text-xs">${alert.created_at}</td>
-                                <td class="border px-4 py-2 text-xs">${alert.severity}</td>
-                                <td class="border px-4 py-2 text-xs">${alert.message}</td>
-                                <td class="border px-4 py-2 text-xs">${alert.acknowledged ? 'Yes' : 'No'}</td>
-                            </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    </div>
-                    <h2 class="text-xl font-semibold mt-8 mb-2">Agents</h2>
-                    <div class="overflow-x-auto">
-                    <table class="min-w-full bg-white rounded shadow">
-                        <thead>
-                            <tr>
-                                <th class="px-4 py-2">Agent ID</th>
-                                <th class="px-4 py-2">Hostname</th>
-                                <th class="px-4 py-2">IP</th>
-                                <th class="px-4 py-2">Status</th>
-                                <th class="px-4 py-2">Last Seen</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.agents.list.map(agent => `
-                            <tr>
-                                <td class="border px-4 py-2 text-xs">${agent.id}</td>
-                                <td class="border px-4 py-2 text-xs">${agent.hostname}</td>
-                                <td class="border px-4 py-2 text-xs">${agent.ip_address}</td>
-                                <td class="border px-4 py-2 text-xs">${agent.status}</td>
-                                <td class="border px-4 py-2 text-xs">${agent.last_seen}</td>
-                            </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
                     </div>
                 `;
-                // Render Event Type Bar Chart
-                const typeLabels = Object.keys(data.events.event_type_counts);
-                const typeData = Object.values(data.events.event_type_counts);
-                new Chart(document.getElementById('eventTypeChart').getContext('2d'), {
-                    type: 'bar',
-                    data: {
-                        labels: typeLabels,
-                        datasets: [{
-                            label: 'Event Count',
-                            data: typeData,
-                            backgroundColor: '#2563eb',
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: { legend: { display: false } }
-                    }
-                });
-                // Render Severity Donut Chart
-                const sevMap = {1: 'Low', 2: 'Medium', 3: 'High', 4: 'Critical'};
-                const sevLabels = [1,2,3,4].map(k => sevMap[k]);
-                const sevData = [1,2,3,4].map(k => data.events.severity_counts[k] || 0);
-                new Chart(document.getElementById('severityDonut').getContext('2d'), {
-                    type: 'doughnut',
-                    data: {
-                        labels: sevLabels,
-                        datasets: [{
-                            data: sevData,
-                            backgroundColor: ['#22c55e','#facc15','#f97316','#ef4444'],
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: { legend: { position: 'bottom' } }
-                    }
-                });
+                // Render charts
+                setTimeout(() => {
+                    renderEventTypeChart(data.events.event_type_counts);
+                    renderSeverityChart(data.events.severity_counts);
+                }, 100);
             });
         }
-
-function renderAllAlerts() {
-    let searchTimeout;
-    const render = (alerts, q) => {
-        const root = document.getElementById('dashboard-content');
-        root.innerHTML = `
-            <h2 class="text-2xl font-semibold mb-4">Alerts</h2>
-            <input id="alerts-search" type="text" placeholder="Search alerts..." class="mb-4 px-3 py-2 border rounded w-full max-w-md" value="${q||''}" />
-            <div class="overflow-x-auto">
-            <table class="min-w-full bg-white rounded shadow">
-                <thead>
-                    <tr>
-                        <th class="px-4 py-2">Time</th>
-                        <th class="px-4 py-2">Severity</th>
-                        <th class="px-4 py-2">Message</th>
-                        <th class="px-4 py-2">Acknowledged</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${alerts.map(alert => `
-                    <tr>
-                        <td class="border px-4 py-2 text-xs">${alert.created_at}</td>
-                        <td class="border px-4 py-2 text-xs">${alert.severity}</td>
-                        <td class="border px-4 py-2 text-xs">${alert.message}</td>
-                        <td class="border px-4 py-2 text-xs">${alert.acknowledged ? 'Yes' : 'No'}</td>
-                    </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-            </div>
-        `;
-        document.getElementById('alerts-search').oninput = function() {
-            clearTimeout(searchTimeout);
-            const val = this.value;
-            searchTimeout = setTimeout(() => {
-                fetch(`/api/all_alerts?q=${encodeURIComponent(val)}`).then(r => r.json()).then(alerts2 => render(alerts2, val));
-            }, 300);
-        };
-    };
-    fetch('/api/all_alerts').then(r => r.json()).then(alerts => render(alerts, ''));
-}
-
-function renderAllEvents() {
-    let searchTimeout;
-    const render = (events, q) => {
-        const root = document.getElementById('dashboard-content');
-        root.innerHTML = `
-            <h2 class="text-2xl font-semibold mb-4">Events</h2>
-            <input id="events-search" type="text" placeholder="Search events..." class="mb-4 px-3 py-2 border rounded w-full max-w-md" value="${q||''}" />
-            <div class="overflow-x-auto">
-            <table class="min-w-full bg-white rounded shadow">
-                <thead>
-                    <tr>
-                        <th class="px-4 py-2">Time</th>
-                        <th class="px-4 py-2">Agent</th>
-                        <th class="px-4 py-2">Type</th>
-                        <th class="px-4 py-2">Severity</th>
-                        <th class="px-4 py-2">Title</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${events.map(ev => `
-                    <tr>
-                        <td class="border px-4 py-2 text-xs">${ev.timestamp}</td>
-                        <td class="border px-4 py-2 text-xs">${ev.agent_id}</td>
-                        <td class="border px-4 py-2 text-xs">${ev.event_type}</td>
-                        <td class="border px-4 py-2 text-xs">${ev.severity}</td>
-                        <td class="border px-4 py-2 text-xs">${ev.title}</td>
-                    </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-            </div>
-        `;
-        document.getElementById('events-search').oninput = function() {
-            clearTimeout(searchTimeout);
-            const val = this.value;
-            searchTimeout = setTimeout(() => {
-                fetch(`/api/all_events?q=${encodeURIComponent(val)}`).then(r => r.json()).then(events2 => render(events2, val));
-            }, 300);
-        };
-    };
-    fetch('/api/all_events').then(r => r.json()).then(events => render(events, ''));
-}
-        function renderUsers() {
-            fetch('/api/users').then(r => r.json()).then(users => {
+        function renderEventTypeChart(data) {
+            const ctx = document.getElementById('eventTypeChart');
+            if (!ctx) return;
+            new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        label: 'Event Count',
+                        data: Object.values(data),
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.1)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+        function renderSeverityChart(data) {
+            const ctx = document.getElementById('severityDonut');
+            if (!ctx) return;
+            const sevMap = {1: 'Low', 2: 'Medium', 3: 'High', 4: 'Critical'};
+            const labels = [1,2,3,4].map(k => sevMap[k]);
+            const values = [1,2,3,4].map(k => data[k] || 0);
+            new Chart(ctx.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: ['#10b981', '#f59e0b', '#f97316', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { padding: 20, usePointStyle: true }
+                        }
+                    }
+                }
+            });
+        }
+        // --- Alerts ---
+        function renderAllAlerts() {
+            setActiveNav('nav-alerts');
+            let searchTimeout;
+            fetch('/api/all_alerts').then(r => r.json()).then(alerts => render(alerts, ''));
+            function render(alerts, query = '') {
                 const root = document.getElementById('dashboard-content');
                 root.innerHTML = `
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-semibold">User Management</h2>
-                        <button id="show-add-user" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">Add User</button>
-                    </div>
-                    <div id="add-user-form" class="hidden mb-6 bg-white p-6 rounded shadow">
-                        <h3 class="text-lg font-bold mb-2">Add New User</h3>
-                        <form id="user-form" class="flex flex-col md:flex-row gap-4 items-center">
-                            <input type="text" id="username" placeholder="Username" class="border px-3 py-2 rounded w-48" required />
-                            <input type="password" id="password" placeholder="Password" class="border px-3 py-2 rounded w-48" required />
-                            <select id="role" class="border px-3 py-2 rounded w-32">
-                                <option value="user">User</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Add</button>
-                            <button type="button" id="cancel-add-user" class="ml-2 text-gray-500 hover:text-red-600">Cancel</button>
-                        </form>
-                        <div id="add-user-error" class="text-red-600 mt-2"></div>
-                    </div>
-                    <div class="overflow-x-auto">
-                    <table class="min-w-full bg-white rounded shadow">
-                        <thead>
-                            <tr>
-                                <th class="px-4 py-2">Username</th>
-                                <th class="px-4 py-2">Role</th>
-                                <th class="px-4 py-2">Created</th>
-                                <th class="px-4 py-2">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${users.map(user => `
-                            <tr>
-                                <td class="border px-4 py-2 text-xs">${user.username}</td>
-                                <td class="border px-4 py-2 text-xs">${user.role}</td>
-                                <td class="border px-4 py-2 text-xs">${user.created_at}</td>
-                                <td class="border px-4 py-2 text-xs">
-                                    <button class="delete-user bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700" data-id="${user.id}">Delete</button>
-                                </td>
-                            </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
+                    <div class="slide-in">
+                        <div class="mb-8">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-2">Alert Management</h1>
+                            <p class="text-gray-600">Monitor and manage system alerts</p>
+                        </div>
+                        <div class="bg-white card-hover p-6 rounded-2xl shadow-sm mb-6">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <div class="relative flex-1 max-w-md">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                    </div>
+                                    <input id="alerts-search" type="text" placeholder="Search alerts..." class="search-input pl-10 pr-4 py-2 border-0 rounded-lg w-full focus:outline-none focus:ring-0" value="${query}">
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <span class="text-sm text-gray-600">Total: ${alerts.length}</span>
+                                    <span class="text-sm text-red-600">Unacknowledged: ${alerts.filter(a => !a.acknowledged).length}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white card-hover rounded-2xl shadow-sm overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severity</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        ${alerts.map(alert => `
+                                            <tr class="table-row">
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${alert.created_at}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${getSeverityBadge(alert.severity)}</td>
+                                                <td class="px-6 py-4 text-sm text-gray-900 max-w-md">${alert.message}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                    ${alert.acknowledged ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">Acknowledged</span>' : '<span class="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">Pending</span>'}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 `;
-                // Add user form logic
+                // Search functionality
+                const searchInput = document.getElementById('alerts-search');
+                searchInput.oninput = function() {
+                    clearTimeout(searchTimeout);
+                    const val = this.value.toLowerCase();
+                    searchTimeout = setTimeout(() => {
+                        fetch(`/api/all_alerts?q=${encodeURIComponent(val)}`).then(r => r.json()).then(alerts2 => render(alerts2, val));
+                    }, 300);
+                };
+            }
+        }
+        // --- Events ---
+        function renderAllEvents() {
+            setActiveNav('nav-events');
+            let searchTimeout;
+            fetch('/api/all_events').then(r => r.json()).then(events => render(events, ''));
+            function render(events, query = '') {
+                const root = document.getElementById('dashboard-content');
+                root.innerHTML = `
+                    <div class="slide-in">
+                        <div class="mb-8">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-2">Event Log</h1>
+                            <p class="text-gray-600">View and search system events</p>
+                        </div>
+                        <div class="bg-white card-hover p-6 rounded-2xl shadow-sm mb-6">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <div class="relative flex-1 max-w-md">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                    </div>
+                                    <input id="events-search" type="text" placeholder="Search events..." class="search-input pl-10 pr-4 py-2 border-0 rounded-lg w-full focus:outline-none focus:ring-0" value="${query}">
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <span class="text-sm text-gray-600">Total: ${events.length}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white card-hover rounded-2xl shadow-sm overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agent</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severity</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        ${events.map(event => `
+                                            <tr class="table-row">
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${event.timestamp}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${event.agent_id}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">${event.event_type}</span></td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${getSeverityBadge(event.severity)}</td>
+                                                <td class="px-6 py-4 text-sm text-gray-900">${event.title}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                // Search functionality
+                const searchInput = document.getElementById('events-search');
+                searchInput.oninput = function() {
+                    clearTimeout(searchTimeout);
+                    const val = this.value.toLowerCase();
+                    searchTimeout = setTimeout(() => {
+                        fetch(`/api/all_events?q=${encodeURIComponent(val)}`).then(r => r.json()).then(events2 => render(events2, val));
+                    }, 300);
+                };
+            }
+        }
+        // --- Users (admin only) ---
+        function renderUsers() {
+            setActiveNav('nav-users');
+            fetch('/api/users').then(r => r.json()).then(users => render(users));
+            function render(users) {
+                const root = document.getElementById('dashboard-content');
+                root.innerHTML = `
+                    <div class="slide-in">
+                        <div class="mb-8">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-2">User Management</h1>
+                            <p class="text-gray-600">Manage system users and permissions</p>
+                        </div>
+                        <div class="bg-white card-hover p-6 rounded-2xl shadow-sm mb-6">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <div class="flex items-center space-x-4">
+                                    <span class="text-sm text-gray-600">Total Users: ${users.length}</span>
+                                    <span class="text-sm text-blue-600">Admins: ${users.filter(u => u.role === 'admin').length}</span>
+                                </div>
+                                <button id="show-add-user" class="btn-primary text-white px-6 py-2 rounded-lg shadow-lg hover:shadow-xl">
+                                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                                    Add User
+                                </button>
+                            </div>
+                        </div>
+                        <div id="add-user-form" class="hidden mb-6 bg-white card-hover p-6 rounded-2xl shadow-sm">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Add New User</h3>
+                            <form id="user-form" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                                    <input type="text" id="username" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                    <input type="password" id="password" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                                    <select id="role" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        <option value="user">User</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </div>
+                                <div class="flex items-end space-x-2">
+                                    <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">Add User</button>
+                                    <button type="button" id="cancel-add-user" class="text-gray-500 hover:text-red-600 px-4 py-2 transition-colors">Cancel</button>
+                                </div>
+                            </form>
+                            <div id="add-user-error" class="text-red-600 mt-2 text-sm"></div>
+                        </div>
+                        <div class="bg-white card-hover rounded-2xl shadow-sm overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        ${users.map(user => `
+                                            <tr class="table-row">
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">${user.username}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"><span class="px-2 py-1 ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'} rounded-full text-xs font-medium">${user.role}</span></td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.created_at}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"><button class="delete-user text-red-600 hover:text-red-800 font-medium transition-colors" data-id="${user.id}">Delete</button></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
                 document.getElementById('show-add-user').onclick = () => {
                     document.getElementById('add-user-form').classList.remove('hidden');
                 };
                 document.getElementById('cancel-add-user').onclick = () => {
                     document.getElementById('add-user-form').classList.add('hidden');
+                    document.getElementById('add-user-error').textContent = '';
                 };
                 document.getElementById('user-form').onsubmit = (e) => {
                     e.preventDefault();
@@ -1321,14 +1575,13 @@ function renderAllEvents() {
                         if (resp.status) {
                             renderUsers();
                         } else {
-                            document.getElementById('add-user-error').innerText = resp.error || 'Failed to add user';
+                            document.getElementById('add-user-error').textContent = resp.error || 'Failed to add user';
                         }
                     });
                 };
-                // Delete user logic
                 document.querySelectorAll('.delete-user').forEach(btn => {
                     btn.onclick = () => {
-                        if (confirm('Delete this user?')) {
+                        if (confirm('Are you sure you want to delete this user?')) {
                             fetch(`/api/users/${btn.dataset.id}`, { method: 'DELETE' })
                                 .then(r => r.json()).then(resp => {
                                     renderUsers();
@@ -1336,7 +1589,14 @@ function renderAllEvents() {
                         }
                     };
                 });
+            }
+        }
+        // --- Navigation ---
+        function setActiveNav(activeId) {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
             });
+            document.getElementById(activeId).classList.add('active');
         }
         document.getElementById('nav-dashboard').onclick = renderDashboard;
         document.getElementById('nav-alerts').onclick = renderAllAlerts;
@@ -1351,6 +1611,12 @@ function renderAllEvents() {
         };
         // Default view
         renderDashboard();
+        // Auto-refresh dashboard every 30 seconds
+        setInterval(() => {
+            if (document.getElementById('nav-dashboard').classList.contains('active')) {
+                renderDashboard();
+            }
+        }, 30000);
         </script>
     </body>
     </html>
