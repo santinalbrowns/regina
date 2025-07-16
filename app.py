@@ -24,7 +24,8 @@ import subprocess
 import re
 from pathlib import Path
 import flask
-from flask import Flask, request, jsonify, send_from_directory, render_template_string
+from flask import Flask, request, jsonify, send_from_directory, render_template_string, session, redirect, url_for
+from functools import wraps
 
 # Configure logging
 logging.basicConfig(
@@ -822,7 +823,72 @@ class MonitoringServer:
         }
 
 app = Flask(__name__)
+app.secret_key = 'change_this_secret_key'
 server_instance = None
+
+# Ensure root user exists on startup
+def ensure_root_user():
+    username = 'Regina'
+    password = 'pass1234'
+    import hashlib
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    users = server_instance.db_manager.get_users()
+    if not any(u['username'] == username for u in users):
+        server_instance.db_manager.add_user(username, password_hash, 'admin')
+
+# Authentication helpers
+def is_logged_in():
+    return 'user_id' in session
+
+def require_login():
+    if not is_logged_in():
+        return redirect(url_for('dashboard_page'))
+
+def is_admin():
+    return session.get('username') and any(u['username'] == session['username'] and u['role'] == 'admin' for u in server_instance.db_manager.get_users())
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not is_logged_in() or not is_admin():
+            return jsonify({'error': 'Admin privileges required'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    import hashlib
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    users = server_instance.db_manager.get_users()
+    user = next((u for u in users if u['username'] == username), None)
+    if user and server_instance.db_manager:
+        with sqlite3.connect(server_instance.db_manager.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, password_hash FROM users WHERE username = ?', (username,))
+            row = cursor.fetchone()
+            if row and row[1] == password_hash:
+                session['user_id'] = row[0]
+                session['username'] = username
+                return jsonify({'status': 'ok'})
+    return jsonify({'error': 'Invalid credentials'}), 401
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'status': 'logged out'})
+
+# Protect API endpoints
+from functools import wraps
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not is_logged_in():
+            return jsonify({'error': 'Not authenticated'}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 @app.route('/register_agent', methods=['POST'])
 def register_agent_api():
@@ -862,6 +928,49 @@ def submit_event_api():
 
 @app.route('/dashboard')
 def dashboard_page():
+    if not is_logged_in():
+        # Show login form
+        html = '''
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Login - Monitoring Dashboard</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="bg-gray-100 min-h-screen flex items-center justify-center">
+            <div class="bg-white p-8 rounded shadow w-full max-w-md">
+                <h1 class="text-2xl font-bold mb-6 text-center">SysMon Login</h1>
+                <form id="login-form" class="flex flex-col gap-4">
+                    <input type="text" id="username" placeholder="Username" class="border px-3 py-2 rounded" required />
+                    <input type="password" id="password" placeholder="Password" class="border px-3 py-2 rounded" required />
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Login</button>
+                </form>
+                <div id="login-error" class="text-red-600 mt-2"></div>
+            </div>
+            <script>
+            document.getElementById('login-form').onsubmit = function(e) {
+                e.preventDefault();
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                }).then(r => r.json()).then(resp => {
+                    if (resp.status) {
+                        window.location.reload();
+                    } else {
+                        document.getElementById('login-error').innerText = resp.error || 'Login failed';
+                    }
+                });
+            };
+            </script>
+        </body>
+        </html>
+        '''
+        return render_template_string(html)
     html = '''
     <!DOCTYPE html>
     <html lang="en">
@@ -878,6 +987,7 @@ def dashboard_page():
                 <div>
                     <button id="nav-dashboard" class="mr-4 text-lg font-semibold text-gray-700 hover:text-blue-600">Dashboard</button>
                     <button id="nav-users" class="text-lg font-semibold text-gray-700 hover:text-blue-600">Users</button>
+                    <button id="nav-logout" class="ml-4 text-lg font-semibold text-gray-700 hover:text-blue-600">Logout</button>
                 </div>
             </div>
         </nav>
@@ -1045,6 +1155,13 @@ def dashboard_page():
         }
         document.getElementById('nav-dashboard').onclick = renderDashboard;
         document.getElementById('nav-users').onclick = renderUsers;
+        document.getElementById('nav-logout').onclick = () => {
+            fetch('/logout', { method: 'POST' }).then(r => r.json()).then(resp => {
+                if (resp.status === 'logged out') {
+                    window.location.reload();
+                }
+            });
+        };
         // Default view
         renderDashboard();
         </script>
@@ -1054,14 +1171,17 @@ def dashboard_page():
     return render_template_string(html)
 
 @app.route('/api/dashboard')
+@login_required
 def api_dashboard():
     return jsonify(server_instance.get_dashboard_data())
 
 @app.route('/api/users', methods=['GET'])
+@admin_required
 def api_list_users():
     return jsonify(server_instance.db_manager.get_users())
 
 @app.route('/api/users', methods=['POST'])
+@admin_required
 def api_add_user():
     data = request.json
     username = data.get('username')
@@ -1078,7 +1198,13 @@ def api_add_user():
         return jsonify({'error': 'Failed to add user'}), 500
 
 @app.route('/api/users/<user_id>', methods=['DELETE'])
+@admin_required
 def api_delete_user(user_id):
+    # Prevent deletion of root user
+    users = server_instance.db_manager.get_users()
+    user = next((u for u in users if u['id'] == user_id), None)
+    if user and user['username'] == 'Regina':
+        return jsonify({'error': 'Cannot delete root user'}), 403
     ok = server_instance.db_manager.delete_user(user_id)
     if ok:
         return jsonify({'status': 'user deleted'})
@@ -1089,8 +1215,8 @@ def api_delete_user(user_id):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == 'flask':
-        # Start the server with Flask API
         server_instance = MonitoringServer()
+        ensure_root_user()
         app.run(host='0.0.0.0', port=8080)
     else:
         # Create a simple test
