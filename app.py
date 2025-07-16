@@ -772,7 +772,7 @@ class MonitoringServer:
                 agents = self.db_manager.get_agents()
                 for agent in agents:
                     last_seen = datetime.fromisoformat(agent['last_seen'])
-                    if datetime.now() - last_seen > timedelta(minutes=5):
+                    if datetime.now() - last_seen > timedelta(minutes=1):
                         self.db_manager.update_agent_status(agent['id'], 'inactive')
                 
                 time.sleep(60)  # Check every minute
