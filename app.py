@@ -1275,7 +1275,7 @@ def dashboard_page():
                                             <div class="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
                                             <div class="flex-1">
                                                 <div class="font-medium text-gray-900 text-sm">${event.title}</div>
-                                                <div class="text-xs text-gray-500">${event.agent_id} • ${event.timestamp}</div>
+                                                <div class="text-xs text-gray-500">${event.hostname} • ${event.timestamp}</div>
                                             </div>
                                             ${getSeverityBadge(event.severity)}
                                         </div>
@@ -1522,7 +1522,7 @@ def dashboard_page():
                                         ${events.map(event => `
                                             <tr class="table-row">
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${event.timestamp}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${event.agent_id}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${event.hostname}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">${event.event_type}</span></td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${getSeverityBadge(event.severity)}</td>
                                                 <td class="px-6 py-4 text-sm text-gray-900">${event.title}</td>
@@ -1717,7 +1717,7 @@ def api_all_events():
     q = request.args.get('q', '').strip().lower()
     events = server_instance.db_manager.get_events(limit=100)
     if q:
-        events = [e for e in events if q in str(e['title']).lower() or q in str(e['event_type']).lower() or q in str(e['agent_id']).lower() or q in str(e['description']).lower()]
+        events = [e for e in events if q in str(e['title']).lower() or q in str(e['event_type']).lower() or q in str(e['hostname']).lower() or q in str(e['description']).lower()]
     return jsonify(events)
 
 @app.route('/api/users', methods=['GET'])
