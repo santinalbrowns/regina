@@ -1217,7 +1217,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == 'flask':
         server_instance = MonitoringServer()
         ensure_root_user()
-        app.run(host='0.0.0.0', port=8080)
+        app.run(host='0.0.0.0', port=8080, debug=True)
     else:
         # Create a simple test
         def test_system():
