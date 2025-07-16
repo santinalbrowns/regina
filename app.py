@@ -793,18 +793,34 @@ class MonitoringServer:
     def get_dashboard_data(self) -> Dict:
         """Get dashboard data for frontend"""
         agents = self.db_manager.get_agents()
-        recent_events = self.db_manager.get_events(limit=50)
-        
-        # Get alerts
+        recent_events = self.db_manager.get_events(limit=5)
+        # Get recent alerts
         with sqlite3.connect(self.db_manager.db_path) as conn:
             cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, event_id, rule_id, severity, message, acknowledged, created_at
+                FROM alerts
+                ORDER BY created_at DESC
+                LIMIT 5
+            ''')
+            columns = [desc[0] for desc in cursor.description]
+            recent_alerts = [dict(zip(columns, row)) for row in cursor.fetchall()]
             cursor.execute('''
                 SELECT COUNT(*) as total_alerts,
                        SUM(CASE WHEN acknowledged = FALSE THEN 1 ELSE 0 END) as unacknowledged
                 FROM alerts
             ''')
             alert_stats = cursor.fetchone()
-        
+            # Severity distribution for donut chart
+            cursor.execute('''
+                SELECT severity, COUNT(*) FROM events GROUP BY severity
+            ''')
+            severity_counts = {row[0]: row[1] for row in cursor.fetchall()}
+            # Event type distribution for bar chart
+            cursor.execute('''
+                SELECT event_type, COUNT(*) FROM events GROUP BY event_type
+            ''')
+            event_type_counts = {row[0]: row[1] for row in cursor.fetchall()}
         return {
             'agents': {
                 'total': len(agents),
@@ -814,11 +830,14 @@ class MonitoringServer:
             },
             'events': {
                 'recent': recent_events,
-                'total': len(recent_events)
+                'total': len(recent_events),
+                'severity_counts': severity_counts,
+                'event_type_counts': event_type_counts
             },
             'alerts': {
                 'total': alert_stats[0] if alert_stats else 0,
-                'unacknowledged': alert_stats[1] if alert_stats else 0
+                'unacknowledged': alert_stats[1] if alert_stats else 0,
+                'recent': recent_alerts
             }
         }
 
@@ -979,20 +998,29 @@ def dashboard_page():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Monitoring Dashboard</title>
         <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </head>
     <body class="bg-gray-100 min-h-screen">
-        <nav class="bg-white shadow mb-8">
-            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-                <div class="text-2xl font-bold text-blue-700">SysMon</div>
-                <div>
-                    <button id="nav-dashboard" class="mr-4 text-lg font-semibold text-gray-700 hover:text-blue-600">Dashboard</button>
-                    <button id="nav-users" class="text-lg font-semibold text-gray-700 hover:text-blue-600">Users</button>
-                    <button id="nav-logout" class="ml-4 text-lg font-semibold text-gray-700 hover:text-blue-600">Logout</button>
+        <div class="flex min-h-screen">
+            <nav class="bg-white shadow w-64 flex-shrink-0 min-h-screen">
+                <div class="px-6 py-8 flex flex-col h-full">
+                    <div class="text-2xl font-bold text-blue-700 mb-10">SysMon</div>
+                    <div class="flex flex-col gap-2">
+                        <button id="nav-dashboard" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Dashboard</button>
+                        <button id="nav-alerts" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Alerts</button>
+                        <button id="nav-events" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Events</button>
+                        <button id="nav-users" class="text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Users</button>
+                    </div>
+                    <div class="mt-auto">
+                        <button id="nav-logout" class="w-full text-left px-4 py-2 rounded text-lg font-semibold text-gray-700 hover:bg-blue-100">Logout</button>
+                    </div>
                 </div>
-            </div>
-        </nav>
-        <div id="dashboard-root" class="container mx-auto py-8">
-            <div id="dashboard-content"></div>
+            </nav>
+            <main class="flex-1 p-8">
+                <div id="dashboard-root">
+                    <div id="dashboard-content"></div>
+                </div>
+            </main>
         </div>
         <script>
         function renderDashboard() {
@@ -1016,8 +1044,18 @@ def dashboard_page():
                             <div class="text-yellow-600">Unacknowledged: ${data.alerts.unacknowledged}</div>
                         </div>
                     </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded shadow">
+                            <h2 class="text-lg font-semibold mb-2">Event Types</h2>
+                            <canvas id="eventTypeChart" height="180"></canvas>
+                        </div>
+                        <div class="bg-white p-6 rounded shadow">
+                            <h2 class="text-lg font-semibold mb-2">Severity Distribution</h2>
+                            <canvas id="severityDonut" height="180"></canvas>
+                        </div>
+                    </div>
                     <h2 class="text-xl font-semibold mb-2">Recent Events</h2>
-                    <div class="overflow-x-auto">
+                    <div class="overflow-x-auto mb-8">
                     <table class="min-w-full bg-white rounded shadow">
                         <thead>
                             <tr>
@@ -1036,6 +1074,29 @@ def dashboard_page():
                                 <td class="border px-4 py-2 text-xs">${ev.event_type}</td>
                                 <td class="border px-4 py-2 text-xs">${ev.severity}</td>
                                 <td class="border px-4 py-2 text-xs">${ev.title}</td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    </div>
+                    <h2 class="text-xl font-semibold mb-2">Recent Alerts</h2>
+                    <div class="overflow-x-auto mb-8">
+                    <table class="min-w-full bg-white rounded shadow">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-2">Time</th>
+                                <th class="px-4 py-2">Severity</th>
+                                <th class="px-4 py-2">Message</th>
+                                <th class="px-4 py-2">Acknowledged</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.alerts.recent.map(alert => `
+                            <tr>
+                                <td class="border px-4 py-2 text-xs">${alert.created_at}</td>
+                                <td class="border px-4 py-2 text-xs">${alert.severity}</td>
+                                <td class="border px-4 py-2 text-xs">${alert.message}</td>
+                                <td class="border px-4 py-2 text-xs">${alert.acknowledged ? 'Yes' : 'No'}</td>
                             </tr>
                             `).join('')}
                         </tbody>
@@ -1067,8 +1128,108 @@ def dashboard_page():
                     </table>
                     </div>
                 `;
+                // Render Event Type Bar Chart
+                const typeLabels = Object.keys(data.events.event_type_counts);
+                const typeData = Object.values(data.events.event_type_counts);
+                new Chart(document.getElementById('eventTypeChart').getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: typeLabels,
+                        datasets: [{
+                            label: 'Event Count',
+                            data: typeData,
+                            backgroundColor: '#2563eb',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                // Render Severity Donut Chart
+                const sevMap = {1: 'Low', 2: 'Medium', 3: 'High', 4: 'Critical'};
+                const sevLabels = [1,2,3,4].map(k => sevMap[k]);
+                const sevData = [1,2,3,4].map(k => data.events.severity_counts[k] || 0);
+                new Chart(document.getElementById('severityDonut').getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: sevLabels,
+                        datasets: [{
+                            data: sevData,
+                            backgroundColor: ['#22c55e','#facc15','#f97316','#ef4444'],
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { position: 'bottom' } }
+                    }
+                });
             });
         }
+
+function renderAllAlerts() {
+    fetch('/api/all_alerts').then(r => r.json()).then(alerts => {
+        const root = document.getElementById('dashboard-content');
+        root.innerHTML = `
+            <h2 class="text-2xl font-semibold mb-4">Alerts</h2>
+            <div class="overflow-x-auto">
+            <table class="min-w-full bg-white rounded shadow">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-2">Time</th>
+                        <th class="px-4 py-2">Severity</th>
+                        <th class="px-4 py-2">Message</th>
+                        <th class="px-4 py-2">Acknowledged</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${alerts.map(alert => `
+                    <tr>
+                        <td class="border px-4 py-2 text-xs">${alert.created_at}</td>
+                        <td class="border px-4 py-2 text-xs">${alert.severity}</td>
+                        <td class="border px-4 py-2 text-xs">${alert.message}</td>
+                        <td class="border px-4 py-2 text-xs">${alert.acknowledged ? 'Yes' : 'No'}</td>
+                    </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            </div>
+        `;
+    });
+}
+
+function renderAllEvents() {
+    fetch('/api/all_events').then(r => r.json()).then(events => {
+        const root = document.getElementById('dashboard-content');
+        root.innerHTML = `
+            <h2 class="text-2xl font-semibold mb-4">Events</h2>
+            <div class="overflow-x-auto">
+            <table class="min-w-full bg-white rounded shadow">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-2">Time</th>
+                        <th class="px-4 py-2">Agent</th>
+                        <th class="px-4 py-2">Type</th>
+                        <th class="px-4 py-2">Severity</th>
+                        <th class="px-4 py-2">Title</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${events.map(ev => `
+                    <tr>
+                        <td class="border px-4 py-2 text-xs">${ev.timestamp}</td>
+                        <td class="border px-4 py-2 text-xs">${ev.agent_id}</td>
+                        <td class="border px-4 py-2 text-xs">${ev.event_type}</td>
+                        <td class="border px-4 py-2 text-xs">${ev.severity}</td>
+                        <td class="border px-4 py-2 text-xs">${ev.title}</td>
+                    </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            </div>
+        `;
+    });
+}
         function renderUsers() {
             fetch('/api/users').then(r => r.json()).then(users => {
                 const root = document.getElementById('dashboard-content');
@@ -1154,6 +1315,8 @@ def dashboard_page():
             });
         }
         document.getElementById('nav-dashboard').onclick = renderDashboard;
+        document.getElementById('nav-alerts').onclick = renderAllAlerts;
+        document.getElementById('nav-events').onclick = renderAllEvents;
         document.getElementById('nav-users').onclick = renderUsers;
         document.getElementById('nav-logout').onclick = () => {
             fetch('/logout', { method: 'POST' }).then(r => r.json()).then(resp => {
@@ -1174,6 +1337,27 @@ def dashboard_page():
 @login_required
 def api_dashboard():
     return jsonify(server_instance.get_dashboard_data())
+
+@app.route('/api/all_alerts')
+@login_required
+def api_all_alerts():
+    with sqlite3.connect(server_instance.db_manager.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, event_id, rule_id, severity, message, acknowledged, created_at
+            FROM alerts
+            ORDER BY created_at DESC
+            LIMIT 100
+        ''')
+        columns = [desc[0] for desc in cursor.description]
+        alerts = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    return jsonify(alerts)
+
+@app.route('/api/all_events')
+@login_required
+def api_all_events():
+    events = server_instance.db_manager.get_events(limit=100)
+    return jsonify(events)
 
 @app.route('/api/users', methods=['GET'])
 @admin_required
