@@ -6,6 +6,8 @@ import socket
 import time
 import logging
 import os
+import hashlib
+import psutil
 from app import MonitoringAgent, SystemMonitor
 
 logger = logging.getLogger(__name__)
@@ -13,19 +15,26 @@ logger = logging.getLogger(__name__)
 
 class NetworkedMonitoringAgent(MonitoringAgent):
     def __init__(self, server_host: str = "localhost", server_port: int = 8080):
-        agent_id_path = "agent_id.txt"
-        if os.path.exists(agent_id_path):
-            with open(agent_id_path, "r") as f:
-                self.agent_id = f.read().strip()
-        else:
-            self.agent_id = str(uuid.uuid4())
-            with open(agent_id_path, "w") as f:
-                f.write(self.agent_id)
+        # Generate a stable agent ID based on hostname and MAC address
+        hostname = platform.node()
+        mac = self._get_primary_mac()
+        base_id = f"{hostname}-{mac}"
+        self.agent_id = hashlib.sha256(base_id.encode()).hexdigest()
         self.server_host = server_host
         self.server_port = server_port
         self.monitor = SystemMonitor(self.agent_id)
         self.running = False
         # No db_manager
+
+    def _get_primary_mac(self):
+        # Use psutil to get the first non-loopback MAC address
+        for iface, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family == psutil.AF_LINK and addr.address != '00:00:00:00:00:00':
+                    if not iface.lower().startswith('lo'):
+                        return addr.address
+        # Fallback to uuid if no MAC found
+        return uuid.getnode()
 
     def _register_with_server(self):
         """Register this agent with the monitoring server via HTTP"""
