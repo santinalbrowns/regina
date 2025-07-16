@@ -637,6 +637,9 @@ class MonitoringAgent:
         # Start monitoring
         self.monitor.start_monitoring()
         
+        # Start heartbeat thread
+        threading.Thread(target=self._send_heartbeat, daemon=True).start()
+        
         # Start event processing loop
         self._process_events()
     
@@ -687,6 +690,17 @@ class MonitoringAgent:
             except Exception as e:
                 logger.error(f"Error processing events: {e}")
                 time.sleep(5)
+    
+    def _send_heartbeat(self):
+        import requests
+        while self.running:
+            try:
+                url = f"http://{self.server_host}:{self.server_port}/heartbeat"
+                data = {'agent_id': self.agent_id}
+                requests.post(url, json=data, timeout=5)
+            except Exception as e:
+                logger.error(f"Heartbeat failed: {e}")
+            time.sleep(30)  # Send heartbeat every 30 seconds
 
 class MonitoringServer:
     def __init__(self, host: str = "localhost", port: int = 8080, db_path: str = "monitoring.db"):
@@ -710,9 +724,39 @@ class MonitoringServer:
                 'severity': Severity.HIGH.value
             },
             {
+                'name': 'High Memory Usage',
+                'description': 'Alert when memory usage exceeds 85%',
+                'pattern': 'High Memory Usage',
+                'severity': Severity.HIGH.value
+            },
+            {
                 'name': 'Process Monitoring',
                 'description': 'Monitor critical process events',
                 'pattern': 'Process started',
+                'severity': Severity.MEDIUM.value
+            },
+            {
+                'name': 'Process Ended',
+                'description': 'Alert when a process ends',
+                'pattern': 'Process ended',
+                'severity': Severity.MEDIUM.value
+            },
+            {
+                'name': 'Login Event',
+                'description': 'Alert on user login',
+                'pattern': 'login',
+                'severity': Severity.LOW.value
+            },
+            {
+                'name': 'Logout Event',
+                'description': 'Alert on user logout',
+                'pattern': 'logout',
+                'severity': Severity.LOW.value
+            },
+            {
+                'name': 'Network Connection',
+                'description': 'Alert on new network connection',
+                'pattern': 'Network Connection',
                 'severity': Severity.MEDIUM.value
             },
             {
@@ -720,6 +764,18 @@ class MonitoringServer:
                 'description': 'Security-related events',
                 'pattern': 'security',
                 'severity': Severity.CRITICAL.value
+            },
+            {
+                'name': 'Suricata Alert',
+                'description': 'Alert for Suricata IDS/IPS events',
+                'pattern': 'Suricata Alert',
+                'severity': Severity.HIGH.value
+            },
+            {
+                'name': 'Suricata Signature',
+                'description': 'Alert for specific Suricata signatures',
+                'pattern': 'Suricata',
+                'severity': Severity.HIGH.value
             }
         ]
         # Only add if not already present
@@ -1700,12 +1756,27 @@ def api_delete_user(user_id):
     else:
         return jsonify({'error': 'Failed to delete user'}), 500
 
+@app.route('/heartbeat', methods=['POST'])
+def heartbeat():
+    data = request.json
+    agent_id = data.get('agent_id')
+    if not agent_id:
+        return jsonify({'error': 'Missing agent_id'}), 400
+    ok = server_instance.db_manager.update_agent_status(agent_id, 'active')
+    if ok:
+        return jsonify({'status': 'heartbeat received'})
+    else:
+        return jsonify({'error': 'Agent not found'}), 404
+
 # Example usage and testing
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == 'flask':
         server_instance = MonitoringServer()
         ensure_root_user()
+        # Start agent status checker thread in Flask mode
+        status_thread = threading.Thread(target=server_instance._check_agent_status, daemon=True)
+        status_thread.start()
         app.run(host='0.0.0.0', port=8080, debug=True)
     else:
         # Create a simple test
