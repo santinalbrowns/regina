@@ -1195,16 +1195,7 @@ def dashboard_page():
                                 <div class="text-3xl font-bold text-gray-900 mb-2">${data.alerts.total}</div>
                                 <div class="text-sm text-orange-600 font-medium">${data.alerts.unacknowledged} Unacknowledged</div>
                             </div>
-                            <div class="metric-card card-hover p-6 rounded-2xl shadow-sm">
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="text-gray-500 text-sm font-medium">System Health</div>
-                                    <div class="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center">
-                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
-                                    </div>
-                                </div>
-                                <div class="text-3xl font-bold text-green-600 mb-2">96%</div>
-                                <div class="text-sm text-gray-600">Uptime</div>
-                            </div>
+                           
                         </div>
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                             <div class="col-span-2 bg-white card-hover p-6 rounded-2xl shadow-sm">
