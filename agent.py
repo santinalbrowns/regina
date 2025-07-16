@@ -5,6 +5,7 @@ import platform
 import socket
 import time
 import logging
+import os
 from app import MonitoringAgent, SystemMonitor
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,14 @@ logger = logging.getLogger(__name__)
 
 class NetworkedMonitoringAgent(MonitoringAgent):
     def __init__(self, server_host: str = "localhost", server_port: int = 8080):
-        self.agent_id = str(uuid.uuid4())
+        agent_id_path = "agent_id.txt"
+        if os.path.exists(agent_id_path):
+            with open(agent_id_path, "r") as f:
+                self.agent_id = f.read().strip()
+        else:
+            self.agent_id = str(uuid.uuid4())
+            with open(agent_id_path, "w") as f:
+                f.write(self.agent_id)
         self.server_host = server_host
         self.server_port = server_port
         self.monitor = SystemMonitor(self.agent_id)

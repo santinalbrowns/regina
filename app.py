@@ -722,14 +722,18 @@ class MonitoringServer:
                 'severity': Severity.CRITICAL.value
             }
         ]
-        
-        for rule in default_rules:
-            self.rule_engine.add_rule(
-                rule['name'], 
-                rule['description'], 
-                rule['pattern'], 
-                rule['severity']
-            )
+        # Only add if not already present
+        with sqlite3.connect(self.db_manager.db_path) as conn:
+            cursor = conn.cursor()
+            for rule in default_rules:
+                cursor.execute('SELECT COUNT(*) FROM rules WHERE name = ? AND pattern = ?', (rule['name'], rule['pattern']))
+                if cursor.fetchone()[0] == 0:
+                    self.rule_engine.add_rule(
+                        rule['name'],
+                        rule['description'],
+                        rule['pattern'],
+                        rule['severity']
+                    )
     
     def start(self):
         """Start the monitoring server"""
@@ -1001,8 +1005,8 @@ def dashboard_page():
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </head>
     <body class="bg-gray-100 min-h-screen">
-        <div class="flex min-h-screen">
-            <nav class="bg-white shadow w-64 flex-shrink-0 min-h-screen">
+        <div>
+            <nav class="fixed top-0 left-0 bg-white shadow w-64 h-screen flex-shrink-0 z-10">
                 <div class="px-6 py-8 flex flex-col h-full">
                     <div class="text-2xl font-bold text-blue-700 mb-10">SysMon</div>
                     <div class="flex flex-col gap-2">
@@ -1016,7 +1020,7 @@ def dashboard_page():
                     </div>
                 </div>
             </nav>
-            <main class="flex-1 p-8">
+            <main class="ml-0 md:ml-64 p-8">
                 <div id="dashboard-root">
                     <div id="dashboard-content"></div>
                 </div>
@@ -1044,14 +1048,14 @@ def dashboard_page():
                             <div class="text-yellow-600">Unacknowledged: ${data.alerts.unacknowledged}</div>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        <div class="bg-white p-6 rounded shadow">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="col-span-2 bg-white p-6 rounded shadow">
                             <h2 class="text-lg font-semibold mb-2">Event Types</h2>
                             <canvas id="eventTypeChart" height="180"></canvas>
                         </div>
                         <div class="bg-white p-6 rounded shadow">
                             <h2 class="text-lg font-semibold mb-2">Severity Distribution</h2>
-                            <canvas id="severityDonut" height="180"></canvas>
+                            <canvas id="severityDonut" width="120" height="120"></canvas>
                         </div>
                     </div>
                     <h2 class="text-xl font-semibold mb-2">Recent Events</h2>
@@ -1168,10 +1172,12 @@ def dashboard_page():
         }
 
 function renderAllAlerts() {
-    fetch('/api/all_alerts').then(r => r.json()).then(alerts => {
+    let searchTimeout;
+    const render = (alerts, q) => {
         const root = document.getElementById('dashboard-content');
         root.innerHTML = `
             <h2 class="text-2xl font-semibold mb-4">Alerts</h2>
+            <input id="alerts-search" type="text" placeholder="Search alerts..." class="mb-4 px-3 py-2 border rounded w-full max-w-md" value="${q||''}" />
             <div class="overflow-x-auto">
             <table class="min-w-full bg-white rounded shadow">
                 <thead>
@@ -1195,14 +1201,24 @@ function renderAllAlerts() {
             </table>
             </div>
         `;
-    });
+        document.getElementById('alerts-search').oninput = function() {
+            clearTimeout(searchTimeout);
+            const val = this.value;
+            searchTimeout = setTimeout(() => {
+                fetch(`/api/all_alerts?q=${encodeURIComponent(val)}`).then(r => r.json()).then(alerts2 => render(alerts2, val));
+            }, 300);
+        };
+    };
+    fetch('/api/all_alerts').then(r => r.json()).then(alerts => render(alerts, ''));
 }
 
 function renderAllEvents() {
-    fetch('/api/all_events').then(r => r.json()).then(events => {
+    let searchTimeout;
+    const render = (events, q) => {
         const root = document.getElementById('dashboard-content');
         root.innerHTML = `
             <h2 class="text-2xl font-semibold mb-4">Events</h2>
+            <input id="events-search" type="text" placeholder="Search events..." class="mb-4 px-3 py-2 border rounded w-full max-w-md" value="${q||''}" />
             <div class="overflow-x-auto">
             <table class="min-w-full bg-white rounded shadow">
                 <thead>
@@ -1228,7 +1244,15 @@ function renderAllEvents() {
             </table>
             </div>
         `;
-    });
+        document.getElementById('events-search').oninput = function() {
+            clearTimeout(searchTimeout);
+            const val = this.value;
+            searchTimeout = setTimeout(() => {
+                fetch(`/api/all_events?q=${encodeURIComponent(val)}`).then(r => r.json()).then(events2 => render(events2, val));
+            }, 300);
+        };
+    };
+    fetch('/api/all_events').then(r => r.json()).then(events => render(events, ''));
 }
         function renderUsers() {
             fetch('/api/users').then(r => r.json()).then(users => {
@@ -1341,6 +1365,7 @@ def api_dashboard():
 @app.route('/api/all_alerts')
 @login_required
 def api_all_alerts():
+    q = request.args.get('q', '').strip().lower()
     with sqlite3.connect(server_instance.db_manager.db_path) as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -1351,12 +1376,17 @@ def api_all_alerts():
         ''')
         columns = [desc[0] for desc in cursor.description]
         alerts = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    if q:
+        alerts = [a for a in alerts if q in str(a['message']).lower() or q in str(a['severity']).lower() or q in str(a['created_at']).lower()]
     return jsonify(alerts)
 
 @app.route('/api/all_events')
 @login_required
 def api_all_events():
+    q = request.args.get('q', '').strip().lower()
     events = server_instance.db_manager.get_events(limit=100)
+    if q:
+        events = [e for e in events if q in str(e['title']).lower() or q in str(e['event_type']).lower() or q in str(e['agent_id']).lower() or q in str(e['description']).lower()]
     return jsonify(events)
 
 @app.route('/api/users', methods=['GET'])
