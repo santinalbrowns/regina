@@ -1142,6 +1142,15 @@ def dashboard_page():
         // --- Dashboard ---
         function renderDashboard() {
             setActiveNav('nav-dashboard');
+            // Destroy charts before replacing the DOM
+            if (eventTypeChartInstance) {
+                eventTypeChartInstance.destroy();
+                eventTypeChartInstance = null;
+            }
+            if (severityChartInstance) {
+                severityChartInstance.destroy();
+                severityChartInstance = null;
+            }
             fetch('/api/dashboard').then(r => r.json()).then(data => {
                 document.getElementById('alert-badge').textContent = data.alerts.unacknowledged;
                 const root = document.getElementById('dashboard-content');
@@ -1286,17 +1295,24 @@ def dashboard_page():
                         </div>
                     </div>
                 `;
-                // Render charts
+                // Render charts after DOM update
                 setTimeout(() => {
                     renderEventTypeChart(data.events.event_type_counts);
                     renderSeverityChart(data.events.severity_counts);
                 }, 100);
             });
         }
+        // Add these variables at the top of the <script> (before chart functions)
+        let eventTypeChartInstance = null;
+        let severityChartInstance = null;
         function renderEventTypeChart(data) {
             const ctx = document.getElementById('eventTypeChart');
             if (!ctx) return;
-            new Chart(ctx.getContext('2d'), {
+            // Destroy previous chart if exists
+            if (eventTypeChartInstance) {
+                eventTypeChartInstance.destroy();
+            }
+            eventTypeChartInstance = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: Object.keys(data),
@@ -1324,10 +1340,14 @@ def dashboard_page():
         function renderSeverityChart(data) {
             const ctx = document.getElementById('severityDonut');
             if (!ctx) return;
+            // Destroy previous chart if exists
+            if (severityChartInstance) {
+                severityChartInstance.destroy();
+            }
             const sevMap = {1: 'Low', 2: 'Medium', 3: 'High', 4: 'Critical'};
             const labels = [1,2,3,4].map(k => sevMap[k]);
             const values = [1,2,3,4].map(k => data[k] || 0);
-            new Chart(ctx.getContext('2d'), {
+            severityChartInstance = new Chart(ctx.getContext('2d'), {
                 type: 'doughnut',
                 data: {
                     labels: labels,
