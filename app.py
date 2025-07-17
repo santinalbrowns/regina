@@ -426,7 +426,11 @@ class SystemMonitor:
         self.hostname = platform.node()
         self.running = False
         self.monitors = {}
-        self.suricata_log_path = "/var/log/suricata/eve.json"
+        import platform
+        if platform.system() == "Windows":
+            self.suricata_log_path = "C:\\suricata\\log\\eve.json"
+        else:
+            self.suricata_log_path = "/var/log/suricata/eve.json"
         
     def start_monitoring(self):
         """Start all monitoring threads"""

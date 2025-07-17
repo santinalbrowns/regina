@@ -96,3 +96,8 @@ Pull requests and issues are welcome! Please open an issue to discuss major chan
 
 ## License
 MIT License 
+
+## Suricata on Windows
+
+> **Note for Windows users:**
+> If you run Suricata on Windows, the agent will look for logs at `C:\suricata\log\eve.json` by default. Make sure your Suricata configuration writes EVE JSON logs to this location, or update the agent code if your path is different. 
