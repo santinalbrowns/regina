@@ -81,7 +81,7 @@ class NetworkedMonitoringAgent(MonitoringAgent):
                         continue
                     except Exception as e:
                         logger.error(f"Error sending event: {e}")
-                time.sleep(1)
+                time.sleep(5)
             except Exception as e:
                 logger.error(f"Error processing events: {e}")
                 time.sleep(5)
