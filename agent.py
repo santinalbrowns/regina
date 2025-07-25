@@ -87,5 +87,5 @@ class NetworkedMonitoringAgent(MonitoringAgent):
                 time.sleep(5)
 
 # Use the networked agent
-agent = NetworkedMonitoringAgent(server_host="localhost", server_port=8080)
+agent = NetworkedMonitoringAgent(server_host="regina.fixchirp.com", server_port=80)
 agent.start()

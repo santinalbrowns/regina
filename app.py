@@ -1021,7 +1021,7 @@ def dashboard_page():
         </head>
         <body class="bg-gray-100 min-h-screen flex items-center justify-center">
             <div class="bg-white p-8 rounded shadow w-full max-w-md">
-                <h1 class="text-2xl font-bold mb-6 text-center">SysMon Login</h1>
+                <h1 class="text-2xl font-bold mb-6 text-center">Mzuzu University (SIEM)</h1>
                 <form id="login-form" class="flex flex-col gap-4">
                     <input type="text" id="username" placeholder="Username" class="border px-3 py-2 rounded" required />
                     <input type="password" id="password" placeholder="Password" class="border px-3 py-2 rounded" required />
@@ -1057,7 +1057,7 @@ def dashboard_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>SysMon - Monitoring Dashboard</title>
+        <title>Mzuzu - Monitoring Dashboard</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
@@ -1105,7 +1105,7 @@ def dashboard_page():
                         </svg>
                     </div>
                     <div>
-                        <div class="text-2xl font-bold text-gray-800">SysMon</div>
+                        <div class="text-2xl font-bold text-gray-800">Mzuzu University (SIEM)</div>
                         <div class="text-sm text-gray-500">Monitoring Dashboard</div>
                     </div>
                 </div>

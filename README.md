@@ -1,7 +1,7 @@
-# SysMon: System Event Monitoring Backend
+# Mzuzu University System Information Event Management
 
 ## Overview
-SysMon is a Wazuh-like system for monitoring system events across multiple devices. It provides real-time visibility into system activities, security alerts, and performance metrics, with a modern web dashboard for visualization and management.
+Mzuzu University System Information Event Management is a Wazuh-like system for monitoring system events across multiple devices. It provides real-time visibility into system activities, security alerts, and performance metrics, with a modern web dashboard for visualization and management.
 
 ## Features
 - **Agent-based monitoring**: Collects events from multiple hosts (agents)
